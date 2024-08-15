@@ -104,7 +104,7 @@ where
     V: Eq + Clone,
 {
     pub storage: Vec<Term<T, K, V>>,
-    parsers: HashMap<GrammarFlavor, tree_sitter::Parser>,
+    pub(super) parsers: HashMap<GrammarFlavor, tree_sitter::Parser>,
 }
 
 impl<T, K, V> Index<TermIndex> for TermArena<T, K, V>
