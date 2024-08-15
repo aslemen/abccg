@@ -1,8 +1,8 @@
-use im::HashMap as IMHashmap;
+use super::base::*;
+
+use im::HashMap as IMHashMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-
-use super::base::*;
 
 const TO_ESCAPE_CAT: &str = "/\\|<>[]()~,'";
 const TO_ESCAPE_FEAT: &str = "[]()~,='";
@@ -58,13 +58,14 @@ fn auto_quote_string_feat(s: &str) -> String {
     }
 }
 
-fn print_features<K, V>(
-    features: &IMHashmap<K, V>,
+fn print_features<K, V, X>(
+    features: &IMHashMap<OrV<K, X>, OrV<V, X>>,
     fmt: &mut std::fmt::Formatter<'_>,
 ) -> std::fmt::Result
 where
     K: Eq + Hash + Clone + Display,
     V: Eq + Clone + Display,
+    X: Eq + Clone + Display,
 {
     if features.is_empty() {
         return Ok(());
@@ -99,11 +100,12 @@ pub enum QuoteStyle {
     Never,
 }
 
-impl<'a, T, K, V> Ai<'a, T, K, V>
+impl<'a, T, K, V, X> Ai<'a, T, K, V, X>
 where
     T: Eq + Clone + Display,
     K: Eq + Hash + Clone + Display,
     V: Eq + Clone + Display,
+    X: Eq + Hash + Clone + Display,
 {
     /// Dump the term to a formatter.
     /// # Arguments
@@ -214,11 +216,12 @@ where
     }
 }
 
-impl<'a, T, K, V> Display for Ai<'a, T, K, V>
+impl<'a, T, K, V, X> Display for Ai<'a, T, K, V, X>
 where
     T: Eq + Clone + Display,
     K: Eq + Hash + Clone + Display,
     V: Eq + Clone + Display,
+    X: Eq + Hash + Clone + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.dump(f, GrammarFlavor::Iconic, QuoteStyle::Auto)?;
@@ -226,11 +229,12 @@ where
     }
 }
 
-impl<'a, T, K, V> Debug for Ai<'a, T, K, V>
+impl<'a, T, K, V, X> Debug for Ai<'a, T, K, V, X>
 where
     T: Eq + Clone + Display,
     K: Eq + Hash + Clone + Display,
     V: Eq + Clone + Display,
+    X: Eq + Hash + Clone + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "TermArena#{:p},", self.0)?;

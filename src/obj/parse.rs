@@ -16,16 +16,17 @@ pub enum ConvertError {
     LackOfChildren(String),
 }
 
-fn convert_feature<'src, K, V>(
+fn convert_feature<'src, K, V, X>(
     node: &tree_sitter::Node,
     src: &'src [u8],
-    try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<K, ConvertError>,
-    try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<V, ConvertError>,
-    hm: &mut IMHashMap<K, V>,
+    try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<OrV<K, X>, ConvertError>,
+    try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<OrV<V, X>, ConvertError>,
+    hm: &mut IMHashMap<OrV<K, X>, OrV<V, X>>,
 ) -> Result<(), ConvertError>
 where
     K: Eq + Hash + Clone,
     V: Eq + Clone + Default,
+    X: Eq + Hash + Clone,
 {
     let feature_key = node
         .child_by_field_name("key")
@@ -34,7 +35,7 @@ where
         .map_err(|_| ConvertError::ConvertFeatureKey)?;
 
     let feature_value = node.child_by_field_name("value");
-    let value: V = match feature_value {
+    let value = match feature_value {
         Some(feature_value) => try_into_value(&src[feature_value.byte_range()])
             .map_err(|_| ConvertError::ConvertFeatureValue)?,
         None => Default::default(),
@@ -43,16 +44,17 @@ where
     Ok(())
 }
 
-fn convert_feature_list<'src, K, V>(
+fn convert_feature_list<'src, K, V, X>(
     node: &tree_sitter::Node,
     src: &'src [u8],
-    try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<K, ConvertError>,
-    try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<V, ConvertError>,
-    hm: &mut IMHashMap<K, V>,
+    try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<OrV<K, X>, ConvertError>,
+    try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<OrV<V, X>, ConvertError>,
+    hm: &mut IMHashMap<OrV<K, X>, OrV<V, X>>,
 ) -> Result<(), ConvertError>
 where
     K: Eq + Hash + Clone,
     V: Eq + Clone + Default,
+    X: Eq + Hash + Clone,
 {
     let mut cursor = node.walk();
     for feature in node.named_children(&mut cursor) {
@@ -61,15 +63,16 @@ where
     Ok(())
 }
 
-fn convert_feature_list_list<'src, 'iter, K, V, I>(
+fn convert_feature_list_list<'src, 'iter, K, V, X, I>(
     nodes: I,
     src: &'src [u8],
-    try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<K, ConvertError>,
-    try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<V, ConvertError>,
-) -> Result<IMHashMap<K, V>, ConvertError>
+    try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<OrV<K, X>, ConvertError>,
+    try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<OrV<V, X>, ConvertError>,
+) -> Result<IMHashMap<OrV<K, X>, OrV<V, X>>, ConvertError>
 where
     K: Eq + Hash + Clone,
     V: Eq + Clone + Default,
+    X: Eq + Hash + Clone,
     I: IntoIterator<Item = tree_sitter::Node<'iter>>,
 {
     let mut feature_map = IMHashMap::new();
@@ -85,11 +88,12 @@ where
     Ok(feature_map)
 }
 
-impl<'src, T, K, V> TermArena<T, K, V>
+impl<'src, T, K, V, X> TermArena<T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone + Default,
+    X: Eq + Hash + Clone,
 {
     /// Parse a term from a byte slice and register it in the arena.
     ///
@@ -106,9 +110,9 @@ where
         &mut self,
         flavor: GrammarFlavor,
         src: &'src [u8],
-        try_into_term: &mut dyn FnMut(&'src [u8]) -> Result<T, ConvertError>,
-        try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<K, ConvertError>,
-        try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<V, ConvertError>,
+        try_into_term: &mut dyn FnMut(&'src [u8]) -> Result<OrV<T, X>, ConvertError>,
+        try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<OrV<K, X>, ConvertError>,
+        try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<OrV<V, X>, ConvertError>,
     ) -> Result<TermIndex, ConvertError> {
         let tree = self
             .parsers
@@ -132,9 +136,9 @@ where
         &mut self,
         node: &tree_sitter::Node,
         src: &'src [u8],
-        try_into_term: &mut dyn FnMut(&'src [u8]) -> Result<T, ConvertError>,
-        try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<K, ConvertError>,
-        try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<V, ConvertError>,
+        try_into_term: &mut dyn FnMut(&'src [u8]) -> Result<OrV<T, X>, ConvertError>,
+        try_into_key: &mut dyn FnMut(&'src [u8]) -> Result<OrV<K, X>, ConvertError>,
+        try_into_value: &mut dyn FnMut(&'src [u8]) -> Result<OrV<V, X>, ConvertError>,
         // NOTE: https://users.rust-lang.org/t/my-recursive-code-of-cps-style-cannot-be-compiled/83001/7
     ) -> Result<TermIndex, ConvertError> {
         match node.kind() {
@@ -174,7 +178,7 @@ where
                 let name = children
                     .next()
                     .ok_or(ConvertError::LackOfChildren("cat_name".to_string()))?;
-                let name_converted: T = try_into_term(&src[name.byte_range()])?;
+                let name_converted = try_into_term(&src[name.byte_range()])?;
                 let features =
                     convert_feature_list_list(children, src, try_into_key, try_into_value)?;
                 Ok(self.register_term(Term::Atomic {

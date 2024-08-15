@@ -17,11 +17,12 @@ struct BRule {
     functor_id_stack: Vec<TermIndex>,
 }
 
-enum RuleAppResult<'a, T, K, V, R>
+enum RuleAppResult<'a, T, K, V, X, R>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
     R: Clone,
 {
     Success {
@@ -29,16 +30,17 @@ where
         res_id: TermIndex,
     },
     Next {
-        action: Box<dyn FnMut(&mut TermArena<T, K, V>) -> RuleAppResult<'a, T, K, V, R> + 'a>,
+        action: Box<dyn FnMut(&mut TermArena<T, K, V, X>) -> RuleAppResult<'a, T, K, V, X, R> + 'a>,
     },
     Fail,
 }
 
-impl<'a, T, K, V, R> Clone for RuleAppResult<'a, T, K, V, R>
+impl<'a, T, K, V, X, R> Clone for RuleAppResult<'a, T, K, V, X, R>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
     R: Clone,
 {
     fn clone(&self) -> Self {
@@ -53,18 +55,19 @@ where
     }
 }
 
-impl<T, K, V> TermArena<T, K, V>
+impl<T, K, V, X> TermArena<T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
     fn reduce_b<'a>(
         &mut self,
         term_left_id: TermIndex,
         term_right_id: TermIndex,
         mut spec: BRule,
-    ) -> RuleAppResult<'a, T, K, V, BRule> {
+    ) -> RuleAppResult<'a, T, K, V, X, BRule> {
         let term_left = &self[term_left_id];
         let term_right = &self[term_right_id];
         match spec.dir {
@@ -164,7 +167,7 @@ where
                         // TODO: check / features
                         {
                             return RuleAppResult::Next {
-                                action: Box::new(move |arena: &mut TermArena<T, K, V>| {
+                                action: Box::new(move |arena: &mut TermArena<T, K, V, X>| {
                                     let mut functor_id_stack = spec.functor_id_stack.clone();
                                     functor_id_stack.push(term_right_ant_id);
                                     arena.reduce_b(
@@ -193,10 +196,11 @@ where
         &mut self,
         term_left_id: TermIndex,
         term_right_id: TermIndex,
-    ) -> VecDeque<Box<dyn FnMut(&mut TermArena<T, K, V>) -> RuleAppResult<'a, T, K, V, BRule> + 'a>>
-    {
+    ) -> VecDeque<
+        Box<dyn FnMut(&mut TermArena<T, K, V, X>) -> RuleAppResult<'a, T, K, V, X, BRule> + 'a>,
+    > {
         let mut queue: VecDeque<
-            Box<dyn FnMut(&mut TermArena<T, K, V>) -> RuleAppResult<'a, T, K, V, BRule> + 'a>,
+            Box<dyn FnMut(&mut TermArena<T, K, V, X>) -> RuleAppResult<'a, T, K, V, X, BRule> + 'a>,
         > = VecDeque::new();
 
         queue.push_back(Box::new(move |arena| {
@@ -235,9 +239,9 @@ where
     fn reduce<'a, R>(
         &mut self,
         action_list: &mut VecDeque<
-            Box<dyn FnMut(&mut TermArena<T, K, V>) -> RuleAppResult<'a, T, K, V, R> + 'a>,
+            Box<dyn FnMut(&mut TermArena<T, K, V, X>) -> RuleAppResult<'a, T, K, V, X, R> + 'a>,
         >,
-    ) -> RuleAppResult<'a, T, K, V, R>
+    ) -> RuleAppResult<'a, T, K, V, X, R>
     where
         R: Clone,
     {

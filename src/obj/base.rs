@@ -1,7 +1,7 @@
 //! Provides the basic data structures for the CCG category.
 
 use std::collections::HashMap;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
 
 use im::HashMap as IMHashMap;
@@ -18,42 +18,107 @@ pub enum GrammarFlavor {
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct TermIndex(pub usize);
 
-/// Represents a CCG category term.
+/// Represents a value or a variable
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum Term<T, K, V>
+pub enum OrV<T, X>
+where
+    T: Eq + Clone,
+    X: Eq + Clone,
+{
+    /// A value.
+    Val(T),
+    /// A variable.
+    Var(X),
+}
+
+impl<T, X> std::fmt::Display for OrV<T, X>
+where
+    T: Eq + Clone + std::fmt::Display,
+    X: Eq + Clone + std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OrV::Val(v) => write!(f, "{}", v),
+            OrV::Var(v) => write!(f, "${}", v),
+        }
+    }
+}
+
+impl<T, X> Hash for OrV<T, X>
+where
+    T: Eq + Clone + Hash,
+    X: Eq + Clone + Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            OrV::Val(v) => v.hash(state),
+            OrV::Var(v) => v.hash(state),
+        }
+    }
+}
+
+impl<T, X> Default for OrV<T, X>
+where
+    T: Eq + Clone + Default,
+    X: Eq + Clone,
+{
+    fn default() -> Self {
+        OrV::Val(T::default())
+    }
+}
+
+impl<T, X> Copy for OrV<T, X>
+where
+    T: Eq + Clone + Copy,
+    X: Eq + Clone + Copy,
+{
+}
+
+/// Represents a CCG category term.
+/// # Type Parameters
+/// * `T` - The type of atomic term names.
+/// * `K` - The type of feature keys.
+/// * `V` - The type of feature values.
+/// * `X` - The type of variables.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum Term<T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
     /// A wrapper for a core term applying features to the whole term.
     Ident {
         core_id: TermIndex,
-        features: IMHashMap<K, V>,
+        features: IMHashMap<OrV<K, X>, OrV<V, X>>,
     },
 
     /// An atomic term.
-    Atomic { name: T, features: IMHashMap<K, V> },
+    Atomic {
+        name: OrV<T, X>,
+        features: IMHashMap<OrV<K, X>, OrV<V, X>>,
+    },
 
     /// A left adjunct term.
     Left {
         ant_id: TermIndex,
         conseq_id: TermIndex,
-        features: IMHashMap<K, V>,
+        features: IMHashMap<OrV<K, X>, OrV<V, X>>,
     },
 
     //. A right adjunct term.
     Right {
         ant_id: TermIndex,
         conseq_id: TermIndex,
-        features: IMHashMap<K, V>,
+        features: IMHashMap<OrV<K, X>, OrV<V, X>>,
     },
 
     /// A middle adjunct term, which can be used as both a left and a right adjunct.
     Middle {
         ant_id: TermIndex,
         conseq_id: TermIndex,
-        features: IMHashMap<K, V>,
+        features: IMHashMap<OrV<K, X>, OrV<V, X>>,
     },
 
     /// A custom functor term.
@@ -61,18 +126,19 @@ where
         name: T,
         /// Arguments of the functor. If an argument is None, it means that the argument is not applied yet.
         arguments: Vec<Option<TermIndex>>,
-        features: IMHashMap<K, V>,
+        features: IMHashMap<OrV<K, X>, OrV<V, X>>,
     },
 }
 
-impl<T, K, V> Term<T, K, V>
+impl<T, K, V, X> Term<T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
     /// Gets the features of the term.
-    pub fn get_features(&self) -> &IMHashMap<K, V> {
+    pub fn get_features(&self) -> &IMHashMap<OrV<K, X>, OrV<V, X>> {
         match self {
             Term::Ident { features, .. } => features,
             Term::Atomic { features, .. } => features,
@@ -84,7 +150,7 @@ where
     }
 
     /// Gets the mutable reference to the features of the term.
-    pub fn get_features_mut(&mut self) -> &mut IMHashMap<K, V> {
+    pub fn get_features_mut(&mut self) -> &mut IMHashMap<OrV<K, X>, OrV<V, X>> {
         match self {
             Term::Ident { features, .. } => features,
             Term::Atomic { features, .. } => features,
@@ -97,45 +163,49 @@ where
 }
 
 /// An arena for storing CCG category terms.
-pub struct TermArena<T, K, V>
+pub struct TermArena<T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
-    pub storage: Vec<Term<T, K, V>>,
+    pub storage: Vec<Term<T, K, V, X>>,
     pub(super) parsers: HashMap<GrammarFlavor, tree_sitter::Parser>,
 }
 
-impl<T, K, V> Index<TermIndex> for TermArena<T, K, V>
+impl<T, K, V, X> Index<TermIndex> for TermArena<T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
-    type Output = Term<T, K, V>;
+    type Output = Term<T, K, V, X>;
 
     fn index(&self, index: TermIndex) -> &Self::Output {
         &self.storage[index.0]
     }
 }
 
-impl<T, K, V> IndexMut<TermIndex> for TermArena<T, K, V>
+impl<T, K, V, X> IndexMut<TermIndex> for TermArena<T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
     fn index_mut(&mut self, index: TermIndex) -> &mut Self::Output {
         &mut self.storage[index.0]
     }
 }
 
-impl<T, K, V> TermArena<T, K, V>
+impl<T, K, V, X> TermArena<T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
     /// Creates a new arena.
     /// # Arguments
@@ -161,7 +231,7 @@ where
     /// Registers a term into the arena.
     pub fn register_term<U>(&mut self, term: U) -> TermIndex
     where
-        U: Into<Term<T, K, V>>,
+        U: Into<Term<T, K, V, X>>,
     {
         let term_into = term.into();
         match self.storage.iter().position(|t| *t == term_into) {
@@ -176,7 +246,7 @@ where
     /// Finds a term and get its index if found in the arena.
     pub fn find_term<U>(&self, term: U) -> Option<TermIndex>
     where
-        U: Into<Term<T, K, V>>,
+        U: Into<Term<T, K, V, X>>,
     {
         let term_into = term.into();
         self.storage
@@ -188,19 +258,21 @@ where
 
 /// A reference to an Arena with an Index (abbr. AI).
 #[derive(Clone, Copy)]
-pub struct Ai<'a, T, K, V>(pub &'a TermArena<T, K, V>, pub TermIndex)
-where
-    T: Eq + Clone,
-    K: Eq + Hash + Clone,
-    V: Eq + Clone;
-
-impl<'a, T, K, V> Ai<'a, T, K, V>
+pub struct Ai<'a, T, K, V, X>(pub &'a TermArena<T, K, V, X>, pub TermIndex)
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone;
+
+impl<'a, T, K, V, X> Ai<'a, T, K, V, X>
+where
+    T: Eq + Clone,
+    K: Eq + Hash + Clone,
+    V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
-    pub fn resolve(&self) -> &Term<T, K, V> {
+    pub fn resolve(&self) -> &Term<T, K, V, X> {
         &self.0[self.1]
     }
 
@@ -209,39 +281,43 @@ where
     }
 }
 
-impl<'a, T, K, V> PartialEq for Ai<'a, T, K, V>
+impl<'a, T, K, V, X> PartialEq for Ai<'a, T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(self.0, other.0) && self.1 == other.1
     }
 }
 
-impl<'a, T, K, V> Eq for Ai<'a, T, K, V>
+impl<'a, T, K, V, X> Eq for Ai<'a, T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
 }
 
 /// A Mutable reference to Arena with an Index (abbr. Mutai).
-pub struct Mutai<'a, T, K, V>(pub &'a mut TermArena<T, K, V>, pub TermIndex)
-where
-    T: Eq + Clone,
-    K: Eq + Hash + Clone,
-    V: Eq + Clone;
-
-impl<'a, T, K, V> Mutai<'a, T, K, V>
+pub struct Mutai<'a, T, K, V, X>(pub &'a mut TermArena<T, K, V, X>, pub TermIndex)
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone;
+
+impl<'a, T, K, V, X> Mutai<'a, T, K, V, X>
+where
+    T: Eq + Clone,
+    K: Eq + Hash + Clone,
+    V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
-    pub fn register_term(&'a mut self, term: Term<T, K, V>) -> TermIndex {
+    pub fn register_term(&'a mut self, term: Term<T, K, V, X>) -> TermIndex {
         self.0.register_term(term)
     }
 
@@ -250,13 +326,14 @@ where
     }
 }
 
-impl<'a, T, K, V> Mutai<'a, T, K, V>
+impl<'a, T, K, V, X> Mutai<'a, T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
-    pub fn left_adjunct(&'a mut self, features: IMHashMap<K, V>) -> TermIndex {
+    pub fn left_adjunct(&'a mut self, features: IMHashMap<OrV<K, X>, OrV<V, X>>) -> TermIndex {
         self.register_term(Term::Left {
             ant_id: self.1,
             conseq_id: self.1,
@@ -264,7 +341,7 @@ where
         })
     }
 
-    pub fn right_adjunct(&'a mut self, features: IMHashMap<K, V>) -> TermIndex {
+    pub fn right_adjunct(&'a mut self, features: IMHashMap<OrV<K, X>, OrV<V, X>>) -> TermIndex {
         self.register_term(Term::Right {
             ant_id: self.1,
             conseq_id: self.1,
@@ -272,7 +349,7 @@ where
         })
     }
 
-    pub fn middle_adjunct(&'a mut self, features: IMHashMap<K, V>) -> TermIndex {
+    pub fn middle_adjunct(&'a mut self, features: IMHashMap<OrV<K, X>, OrV<V, X>>) -> TermIndex {
         self.register_term(Term::Middle {
             ant_id: self.1,
             conseq_id: self.1,
@@ -343,21 +420,23 @@ where
     }
 }
 
-impl<'a, T, K, V> PartialEq for Mutai<'a, T, K, V>
+impl<'a, T, K, V, X> PartialEq for Mutai<'a, T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(self.0, other.0) && self.1 == other.1
     }
 }
 
-impl<'a, T, K, V> Eq for Mutai<'a, T, K, V>
+impl<'a, T, K, V, X> Eq for Mutai<'a, T, K, V, X>
 where
     T: Eq + Clone,
     K: Eq + Hash + Clone,
     V: Eq + Clone,
+    X: Eq + Hash + Clone,
 {
 }
