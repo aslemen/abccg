@@ -268,7 +268,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::parse::ConvertError;
+    use super::super::parse::converter_utf8::*;
     use super::*;
     use rstest::*;
 
@@ -285,37 +285,31 @@ mod tests {
         #[case] rule: BRule,
     ) {
         let mut arena = TermArena::new(&[flavor]);
-        let convert_term =
-            &mut |s| std::str::from_utf8(s).map_err(|_| ConvertError::ConvertUniqCatName);
-        let convert_key =
-            &mut |s| std::str::from_utf8(s).map_err(|_| ConvertError::ConvertFeatureKey);
-        let convert_value =
-            &mut |s| std::str::from_utf8(s).map_err(|_| ConvertError::ConvertFeatureValue);
         let left_id = arena
             .parse_term(
                 flavor,
                 left_str.as_bytes(),
-                convert_term,
-                convert_key,
-                convert_value,
+                &mut try_into_term,
+                &mut try_into_key,
+                &mut try_into_value,
             )
             .unwrap();
         let right_id = arena
             .parse_term(
                 flavor,
                 right_str.as_bytes(),
-                convert_term,
-                convert_key,
-                convert_value,
+                &mut try_into_term,
+                &mut try_into_key,
+                &mut try_into_value,
             )
             .unwrap();
         let result_expected = arena
             .parse_term(
                 flavor,
                 result_str.as_bytes(),
-                convert_term,
-                convert_key,
-                convert_value,
+                &mut try_into_term,
+                &mut try_into_key,
+                &mut try_into_value,
             )
             .unwrap();
         // Perform mutable operations and store results

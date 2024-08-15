@@ -311,6 +311,33 @@ where
     }
 }
 
+pub mod converter_utf8 {
+    use super::super::base::*;
+    fn literal_or_var(s: &str) -> OrV<String, String> {
+        if s.starts_with("$") {
+            return OrV::Var(s[1..].to_string());
+        } else {
+            return OrV::Val(s.to_string());
+        }
+    }
+
+    pub fn try_into_term<'src>(s: &'src [u8]) -> Result<OrV<String, String>, super::ConvertError> {
+        std::str::from_utf8(s)
+            .map_err(|_| super::ConvertError::ConvertUniqCatName)
+            .map(literal_or_var)
+    }
+    pub fn try_into_key<'src>(s: &'src [u8]) -> Result<OrV<String, String>, super::ConvertError> {
+        std::str::from_utf8(s)
+            .map_err(|_| super::ConvertError::ConvertFeatureKey)
+            .map(literal_or_var)
+    }
+    pub fn try_into_value<'src>(s: &'src [u8]) -> Result<OrV<String, String>, super::ConvertError> {
+        std::str::from_utf8(s)
+            .map_err(|_| super::ConvertError::ConvertFeatureValue)
+            .map(literal_or_var)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -327,14 +354,14 @@ mod test {
         GrammarFlavor::Iconic
     )]
     fn test_parse(#[case] input: &str, #[case] flavor: GrammarFlavor) -> Result<(), ConvertError> {
-        let mut arena: TermArena<&str, &str, &str> =
+        let mut arena: TermArena<String, String, String, String> =
             TermArena::new(vec![GrammarFlavor::Iconic].as_slice());
         let parsed = arena.parse_term(
             flavor,
             input.as_bytes(),
-            &mut |s| std::str::from_utf8(s).map_err(|_| ConvertError::ConvertUniqCatName),
-            &mut |s| std::str::from_utf8(s).map_err(|_| ConvertError::ConvertFeatureKey),
-            &mut |s| std::str::from_utf8(s).map_err(|_| ConvertError::ConvertFeatureValue),
+            &mut converter_utf8::try_into_term,
+            &mut converter_utf8::try_into_key,
+            &mut converter_utf8::try_into_value,
         );
         parsed.map(|cat_id| {
             println!("{:?}", arena[cat_id]);
